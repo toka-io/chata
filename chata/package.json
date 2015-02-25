@@ -1,0 +1,14 @@
+{
+  "name": "chata",
+  "desc": "A simple chat server",
+  "author": "Andy Lim <andytlim@gmail.com>",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "http-server": "^0.7.4",
+    "socket.io": "^1.3.4"
+  }
+}
