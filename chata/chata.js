@@ -91,28 +91,32 @@ Chata.prototype.initializeSocketEvents = function(socket) {
         	self.sockets[socketID].emit('viewers', self.getViewers());
             }
         }
-        
     });
 
     // Make sure to add a check if it's JSON -- maybe even if it's a particular JSON object
     socket.on('message', function(json) {
-        var chatroom = self.chatrooms[json.chatroomID];
-        var message = new Message(json.chatroomID, json.username, json.text);
-
-        // Store message in history
-        chatroom.updateHistory(message.data);
-
-        console.log((new Date()) + " [Chatroom " + chatroom.chatroomID + "] Received message from " + message.data.username + ": " + message.data.text);
-
-        // Go through all sockets stored in chatroom and send the message to them
-        for (var clientIp in chatroom.clients) {
-            var chatroomSockets = chatroom.clients[clientIp].sockets;
-            for (var socketID in chatroomSockets) {
-                if (socketID !== socket.id) {
-                    chatroomSockets[socketID].emit('message', message);
+	var chatroom;
+	var message = new Message();
+	
+	if (message.isValidMessage(json)) {
+            chatroom = self.chatrooms[json.chatroomID];
+            message.bindJson(json);
+    
+            // Store message in history
+            chatroom.updateHistory(message.data);
+    
+            console.log((new Date()) + " [Chatroom " + chatroom.chatroomID + "] Received message from " + message.data.username + ": " + message.data.text);
+    
+            // Go through all sockets stored in chatroom and send the message to them
+            for (var clientIp in chatroom.clients) {
+                var chatroomSockets = chatroom.clients[clientIp].sockets;
+                for (var socketID in chatroomSockets) {
+                    if (socketID !== socket.id) {
+                        chatroomSockets[socketID].emit('message', message);
+                    }
                 }
             }
-        }
+	}
     });
     
     socket.on('metrics', function(json) {
@@ -134,8 +138,7 @@ Chata.prototype.initializeSocketEvents = function(socket) {
         console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " requested all users");
         
         socket.emit('users', self.getUsers());
-    });
-    
+    });    
 
     /*
      * viewers event
@@ -257,20 +260,41 @@ function History(chatroomID) {
 History.prototype.addMessage = function(message) {
     var self = this;
     self.data.push(message);
-    self.data.slice(-100);
+    self.data = self.data.slice(-100); // Remove this if you want to store permanaent history
 };
 
 /**
  * Message object
  * @desc: Chatroom message format 
  */
-function Message(chatroomID, username, text, timestamp) {
-    this.chatroomID = chatroomID;
+function Message() {
+    this.chatroomID;
     this.type = "message";
     this.data = {};
-    this.data.username = username;
-    this.data.text = text;
-    this.data.timestamp = ""; // Will figure this out later
+}
+Message.prototype.isValidMessage = function(json) {
+    try {
+        if (typeof json.chatroomID !== "string")
+            return false;
+        
+        if (typeof json.text !== "string")
+            return false;
+        
+        if (typeof json.username !== "string")
+            return false;
+    }
+    catch (err) {
+	return false;
+    }
+    
+    return true;
+}
+Message.prototype.bindJson = function(json) {
+    var self = this;
+    
+    self.chatroomID = json.chatroomID;
+    self.data.username = json.username;
+    self.data.text = json.text;
 }
 
 /**
