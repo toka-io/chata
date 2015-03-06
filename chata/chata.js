@@ -14,10 +14,10 @@ module.exports = new Chata();
 function Chata() {
     this.io = null;
     this.port = 1337;
-    this.sockets = {};
     
+    this.numOfChatrooms = 0;
     this.chatrooms = {};
-    this.chatroomList = [];
+    this.sockets = {};
 }
 /*
  * @desc: Starts server at port 1337
@@ -47,11 +47,33 @@ Chata.prototype.initializeSocketEvents = function(socket) {
     var self = this;    
 
     /*
+     * activeViewerCount event
+     * @desc: Client requests a list of all chatrooms and their viewer counts (ip-based not login based)
+     */
+    socket.on('activeViewerCount', function() {
+	var clientIp = socket.request.connection.remoteAddress;
+	
+        console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " requested active viewer count");
+        
+        socket.emit('activeViewerCount', self.getActiveViewerCount());
+    });  
+    
+    /*
      * disconnect event
      * @desc: Client disconnects
      */
     socket.on("disconnect", function() {
+	self.removeSocket(socket);
+	
         console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " disconnected");
+	
+        // Go through all sockets and send them the updated user list and client list to them
+        // This can be made more efficient to the ones in/viewing the chatroom
+        for (var socketID in self.sockets) {        	
+            if (socketID !== socket.id) {
+        	self.sockets[socketID].emit('activeViewerCount', self.getActiveViewerCount());
+            }
+        }
     });
 
     /*
@@ -63,11 +85,11 @@ Chata.prototype.initializeSocketEvents = function(socket) {
 	// Yes, I do not prevent a non-registered chatroom from being created - This could be API potential
         if (!self.chatrooms.hasOwnProperty(json.chatroomID)) {
             self.chatrooms[json.chatroomID] = new Chatroom(json.chatroomID);
-            self.chatroomList.push(self.chatrooms[json.chatroomID]);
+            self.numOfChatrooms++;
         }
 
         // Retrieve the chatroom the client is trying to join
-        var chatroom = self.chatrooms[json.chatroomID];      
+        var chatroom = self.chatrooms[json.chatroomID];
         
         // Add the client
         chatroom.addClient(socket);        
@@ -75,7 +97,7 @@ Chata.prototype.initializeSocketEvents = function(socket) {
         // Add user if they are logged in
         // Logged in users will have a username passed in the json
         if (json.username.trim() !== "")
-            chatroom.addUser(json.username);
+            chatroom.addUser(json.username, socket);
 
         console.log((new Date()) + " [Chatroom " + json.chatroomID + "] " + json.username + " joined");
 
@@ -84,11 +106,11 @@ Chata.prototype.initializeSocketEvents = function(socket) {
             socket.emit("history", chatroom.history);
         }
         
-        // Go through all sockets and send them the updated user list and client list to them       
+        // Go through all sockets and send them the updated user list and client list to them
+        // This can be made more efficient to the ones in/viewing the chatroom
         for (var socketID in self.sockets) {        	
             if (socketID !== socket.id) {
-        	self.sockets[socketID].emit('users', self.getUsers());
-        	self.sockets[socketID].emit('viewers', self.getViewers());
+        	self.sockets[socketID].emit('activeViewerCount', self.getActiveViewerCount());
             }
         }
     });
@@ -121,7 +143,7 @@ Chata.prototype.initializeSocketEvents = function(socket) {
     
     socket.on('metrics', function(json) {
         var metrics = {};
-        metrics.numberOfChatrooms = self.chatroomList.length;
+        metrics.numberOfChatrooms = self.numOfChatrooms;
 
         console.log((new Date()) + " Client requested 'metrics'");
         
@@ -129,50 +151,55 @@ Chata.prototype.initializeSocketEvents = function(socket) {
     });
 
     /*
-     * users event
-     * @desc: Client requests a list of all chatrooms and their users
-     */
-    socket.on('users', function() {
-	var clientIp = socket.request.connection.remoteAddress;
-	
-        console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " requested all users");
-        
-        socket.emit('users', self.getUsers());
-    });    
-
-    /*
      * viewers event
-     * @desc: Client requests a list of all chatrooms and their viewers (ip-based not login based) 
+     * @desc: Client requests a list of all chatrooms and their active viewer count and users
      */
-    socket.on('viewers', function() {
-	var clientIp = socket.request.connection.remoteAddress;
-	
-        console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " requested all viewers");
-        
-        socket.emit('viewers', self.getViewers());
-    });    
+    socket.on('users', function(chatroomID) {
+	if (typeof chatroomID === "string") {
+	    var clientIp = socket.request.connection.remoteAddress;
+    	
+            console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " requested all viewers");
+            
+            socket.emit('activeViewerCount', self.getActiveViewerCount(chatroomID));
+            socket.emit('users', self.getUsers(chatroomID));
+	}
+    });  
 };
-Chata.prototype.getUsers = function() {
+Chata.prototype.getActiveViewerCount = function(chatroomID) {
+    var self = this;
+    
+    var activeViewerCount = {};
+    
+    if (typeof chatroomID === "undefined") {
+        for (var chatroomID in self.chatrooms) {
+            activeViewerCount[chatroomID] = self.chatrooms[chatroomID].numOfClients;
+        }
+    }
+    else {
+	activeViewerCount[chatroomID] = self.chatrooms[chatroomID].numOfClients;
+    }
+    
+    return activeViewerCount;
+};
+Chata.prototype.getUsers = function(chatroomID) {
     var self = this;
     
     var users = {};
+    users[chatroomID] = [];
     
-    for (var chatroomID in self.chatrooms) {
-	users[chatroomID] = self.chatrooms[chatroomID].usersList;
-    }
+    for (var username in self.chatrooms[chatroomID].users)
+	users[chatroomID].push(username);
     
     return users;
 };
-Chata.prototype.getViewers = function() {
+// We can improve performance if we store the chatroomID to the sockets map...but what about when we have multiple chatrooms to one socket?
+Chata.prototype.removeSocket = function(socket) {
     var self = this;
     
-    var viewers = {};
-    
     for (var chatroomID in self.chatrooms) {
-	viewers[chatroomID] = self.chatrooms[chatroomID].clientList;
+	var chatroom = self.chatrooms[chatroomID];
+	chatroom.removeSocket(socket);
     }
-    
-    return viewers;
 };
 
 /**
@@ -182,12 +209,12 @@ Chata.prototype.getViewers = function() {
 function Chatroom(chatroomID) {
     this.chatroomID = chatroomID; // Unique identifier for chatroom
     this.clients = {}; // Easy access to clients
-    this.clientList = []; // Number of people connected to this chatroom via ip
     this.history = new History(chatroomID); // Chatroom's history
+    this.numOfClients = 0; // Number of people connected to this chatroom via ip
     this.sockets = {}; // Easy access to sockets
-    this.socketList = []; // Not used
+    this.socketToClient = {}; // Reverse lookup for client
+    this.socketToUser = {}; // Reverse lookup for user
     this.users = {}; // Easy access to users
-    this.usersList = []; // Number of people logged in & viewing chatroom
 }
 /*
  * @desc: Adds a client if it has not already been added to this chatroom
@@ -200,26 +227,52 @@ Chatroom.prototype.addClient = function(socket) {
     if (!self.clients.hasOwnProperty(clientIp)) {
 	var client = new Client(clientIp);
         self.clients[clientIp] = client;
-        self.clientList.push(clientIp);
+        self.numOfClients++;
     }
     
     self.clients[clientIp].addSocket(socket);
+    self.socketToClient[socket.id] = clientIp;
 };
 /*
  * @desc: Adds a user if they have not already been added to this chatroom
  */
-Chatroom.prototype.addUser = function(username) {
+Chatroom.prototype.addUser = function(username, socket) {
     var self = this;
     if (!self.users.hasOwnProperty(username)) {
-        self.users[username] = username;
-        self.usersList.push(username);
+	var user = new User(username)
+        self.users[username] = user;
     }
-};
-Chatroom.prototype.removeClient = function(clientIp) {
     
+    self.users[username].addSocket(socket);
+    self.socketToUser[socket.id] = username;
 };
-Chatroom.prototype.removeUser = function(clientIp) {
+Chatroom.prototype.removeSocket = function(socket) {
+    var self = this;
+    var clientIp;
+    var username;
     
+    if (self.socketToClient.hasOwnProperty(socket.id)) {
+	clientIp = self.socketToClient[socket.id];
+	
+	self.clients[clientIp].removeSocket(socket);
+	// console.log("Removed socket for " + clientIp + ".");
+	if (self.clients[clientIp].hasNoSockets()) {
+	    delete self.clients[clientIp];
+	    self.numOfClients--;
+	    // console.log("No more sockets for " + clientIp + ". The client has been removed from chatroom " + self.chatroomID);
+	}
+    }
+	  
+    if (self.socketToUser.hasOwnProperty(socket.id)) {
+	username = self.socketToUser[socket.id];
+    
+        self.users[username].removeSocket(socket);
+        // console.log("Removed socket for " + username + ".");
+        if (self.users[username].hasNoSockets()) {
+            delete self.users[username];
+            // console.log("No more sockets for " + username + ". The user has been removed from chatroom " + self.chatroomID);
+        }
+    }
 };
 Chatroom.prototype.updateHistory = function(message) {
     var self = this;
@@ -233,7 +286,6 @@ Chatroom.prototype.updateHistory = function(message) {
 function Client(clientIp) {
     this.clientIp = clientIp;
     this.sockets = {};
-    this.socketList = [];
 }
 Client.prototype.addSocket = function(socket) {
     var self = this;
@@ -243,9 +295,13 @@ Client.prototype.addSocket = function(socket) {
 };
 Client.prototype.removeSocket = function(socket) {
     var self = this;
-    if (!self.sockets.hasOwnProperty(socket.id)) {
-	self.sockets[socket.id] = socket;
+    if (self.sockets.hasOwnProperty(socket.id)) {
+	delete self.sockets[socket.id];
     }
+};
+Client.prototype.hasNoSockets = function() {
+    var self = this;
+    return !Object.keys(self.sockets).length;
 };
 
 /** 
@@ -296,6 +352,33 @@ Message.prototype.bindJson = function(json) {
     self.data.username = json.username;
     self.data.text = json.text;
 }
+
+
+/** 
+ * User object
+ * @desc: Username and their associated sockets
+ */
+function User(username) {
+    this.username = username;
+    this.sockets = {};
+}
+User.prototype.addSocket = function(socket) {
+    var self = this;
+    if (!self.sockets.hasOwnProperty(socket.id)) {
+	self.sockets[socket.id] = socket;
+    }
+};
+User.prototype.removeSocket = function(socket) {
+    var self = this;
+    if (self.sockets.hasOwnProperty(socket.id)) {
+	delete self.sockets[socket.id];
+    }
+};
+User.prototype.hasNoSockets = function() {
+    var self = this;
+    return !Object.keys(self.sockets).length;
+};
+
 
 /**
  * Helper function for debugging contents of objects
