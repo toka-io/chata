@@ -7,6 +7,8 @@
 
 module.exports = new Chata();	
 
+var moment = require('moment');
+
 /** 
  * Chata App 
  * @desc: Chata application. This is what initializes all of the socket evens and manages socket and user sessions.
@@ -22,10 +24,23 @@ function Chata() {
 /*
  * @desc: Starts server at port 1337
  */
-Chata.prototype.startServer = function() {
+Chata.prototype.startServer = function(options) {
     var self = this;
+
+    var app;
     
-    self.io = require('socket.io')(require('http').createServer());
+    // Uses ssl if certificate information is provided
+    if (options && options.ssl) {
+	app = require('https').createServer(options.ssl);
+	self.io = require('socket.io')(app);
+	    
+	console.log((new Date()) + " Server is using https");
+    }
+    else {
+	app = require('http').createServer();
+	self.io = require('socket.io')(app);
+	console.log((new Date()) + " Server is using http");
+    }
     
     // Add a connect listener
     self.io.on('connection', function(socket) {
@@ -40,8 +55,15 @@ Chata.prototype.startServer = function() {
         self.initializeSocketEvents(socket);
     });    
 
-    self.io.listen(self.port);
-    console.log((new Date()) + " Server is listening on port " + self.port);
+    // Determines which port to listen on
+    if (options && options.port) {
+	app.listen(options.port);
+	console.log((new Date()) + " Server is listening on port " + options.port);
+    }
+    else {
+	app.listen(self.port);
+	console.log((new Date()) + " Server is listening on port " + self.port);
+    }
 };
 Chata.prototype.initializeSocketEvents = function(socket) {
     var self = this;    
@@ -116,7 +138,7 @@ Chata.prototype.initializeSocketEvents = function(socket) {
     });
 
     // Make sure to add a check if it's JSON -- maybe even if it's a particular JSON object
-    socket.on('message', function(json) {
+    socket.on('sendMessage', function(json) {
 	var chatroom;
 	var message = new Message();
 	
@@ -134,7 +156,7 @@ Chata.prototype.initializeSocketEvents = function(socket) {
                 var chatroomSockets = chatroom.clients[clientIp].sockets;
                 for (var socketID in chatroomSockets) {
                     if (socketID !== socket.id) {
-                        chatroomSockets[socketID].emit('message', message);
+                        chatroomSockets[socketID].emit('receiveMessage', message);
                     }
                 }
             }
@@ -327,6 +349,7 @@ function Message() {
     this.chatroomID;
     this.type = "message";
     this.data = {};
+    this.data.timestamp = moment().utc().format('MMM D, YYYY h:mm a');
 }
 Message.prototype.isValidMessage = function(json) {
     try {
