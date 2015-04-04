@@ -9,6 +9,7 @@ The chat server can run on any available port (default is 1337) and supports the
 
 ### Server Events
 * activeViewerCount
+* connect
 * disconnect
 * join
 * sendMessage
