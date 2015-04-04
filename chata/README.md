@@ -21,7 +21,7 @@ The chat server can run on any available port (default is 1337) and supports the
 * receiveMessage
 * users
 
-### Tools
+## Tools
 
 Created with [Nodeclipse](https://github.com/Nodeclipse/nodeclipse-1)
  ([Eclipse Marketplace](http://marketplace.eclipse.org/content/nodeclipse), [site](http://www.nodeclipse.org))   
