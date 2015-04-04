@@ -16,8 +16,8 @@ var fs = require('fs');
 var options = {
     port: 1337,
     ssl: {
-        key: fs.readFileSync('X:/domains/toka.io/ssl/toka_io.key').toString(),
-        cert: fs.readFileSync('X:/domains/toka.io/ssl/toka_io.crt').toString(),
+        key: fs.readFileSync('X:/domains/toka.io/ssl/wildcard_toka_io.key').toString(),
+        cert: fs.readFileSync('X:/domains/toka.io/ssl/wildcard_toka_io.crt').toString(),
         ca: fs.readFileSync('X:/domains/toka.io/ssl/DigiCertCA.crt').toString(),
         rejectUnauthorized: false
     }
