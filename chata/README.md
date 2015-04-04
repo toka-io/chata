@@ -1,16 +1,24 @@
 
 
-# test
+# Chata
 
+## What is Chata?
+Chata is a simple chat server solution. 
 
+The chat server can run on any available port and supports the following events:
 
-## Usage
+### Server Events
+* activeViewerCount
+* disconnect
+* join
+* sendMessage
+* users
 
-
-
-## Developing
-
-
+### Client Events
+* activeViewerCount
+* history
+* receiveMessage
+* users
 
 ### Tools
 
