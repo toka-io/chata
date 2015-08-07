@@ -1,5 +1,5 @@
 /**
- * Chata - Simple Chat Server Executable
+ * Chata 1.0 - Simple Chat Server Executable (Local)
  * @author: Andy Lim
  * @email: andytlim@gmail.com
  */
@@ -13,8 +13,10 @@ var chata = require('./chata');
 
 var fs = require('fs');
 
+var port = (process.argv[2]) ? process.argv[2] : 1337; 
+
 var options = {
-    port: 1337,
+    port: port,
     ssl: {
         key: fs.readFileSync('X:/domains/toka.io/ssl/wildcard_toka_io.key').toString(),
         cert: fs.readFileSync('X:/domains/toka.io/ssl/wildcard_toka_io.crt').toString(),
