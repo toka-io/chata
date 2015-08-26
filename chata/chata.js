@@ -8,6 +8,7 @@
 module.exports = new Chata();
 
 var moment = require('moment');
+var fs = require('fs');
 
 /** 
  * Chata App 
@@ -53,6 +54,9 @@ Chata.prototype.startServer = function(options) {
     var self = this;
 
     var app;
+
+    console.log("Loading save state...");
+    self.loadSave();
 
     // Uses ssl if certificate information is provided
     if (options && options.ssl) {
@@ -128,6 +132,7 @@ Chata.prototype.initializeSocketEvents = function(socket) {
     socket.on('join', function(json) {
         // Chatroom is created if it does not exist
         // Yes, I do not prevent a non-registered chatroom from being created - This could be API potential
+        
         if (!self.chatrooms.hasOwnProperty(json.chatroomId)) {
             self.chatrooms[json.chatroomId] = new Chatroom(json.chatroomId);
             self.numOfChatrooms++;
@@ -147,9 +152,8 @@ Chata.prototype.initializeSocketEvents = function(socket) {
         console.log((new Date()) + " [Chatroom " + json.chatroomId + "] " + json.username + " joined");
 
         // Send chat history to the client
-        if (chatroom.history.data.length > 0) {
-            socket.emit("history", chatroom.history);
-        }
+        socket.emit("history", chatroom.history);
+        
 
         // Go through all sockets and send them the updated user list and client list to them
         // This can be made more efficient to the ones in/viewing the chatroom
@@ -227,6 +231,16 @@ Chata.prototype.getUsers = function(chatroomId) {
 
     return users;
 };
+Chata.prototype.loadSave = function() {
+    var self = this;
+    var chatrooms = JSON.parse(fs.readFileSync('data/save.json').toString());
+
+    for (var chatroomId in chatrooms) {
+        chatrooms[chatroomId].__proto__ = Chatroom.prototype;
+        chatrooms[chatroomId].history.__proto__ = History.prototype;
+    }
+    self.chatrooms = chatrooms;
+}
 // We can improve performance if we store the chatroomId to the sockets map...but what about when we have multiple chatrooms to one socket?
 Chata.prototype.removeSocket = function(socket) {
     var self = this;
@@ -235,6 +249,22 @@ Chata.prototype.removeSocket = function(socket) {
         var chatroom = self.chatrooms[chatroomId];
         chatroom.removeSocket(socket);
     }
+};
+Chata.prototype.saveState = function() {
+    var self = this;
+
+    for (var chatroomId in self.chatrooms) {
+        self.chatrooms[chatroomId].clients = {};
+        self.chatrooms[chatroomId].numOfClients = 0;
+        self.chatrooms[chatroomId].sockets = {};
+        self.chatrooms[chatroomId].socketToClient = {};
+        self.chatrooms[chatroomId].socketToUser = {};
+        self.chatrooms[chatroomId].users = {};        
+    }
+
+    console.log((new Date()) + " Saving chata state..." + JSON.stringify(self.chatrooms));
+    fs.writeFileSync('data/save.json', JSON.stringify(self.chatrooms));
+    process.exit();
 };
 
 /**
@@ -348,7 +378,7 @@ function History(chatroomId) {
 History.prototype.addMessage = function(message) {
     var self = this;
     self.data.push(message);
-    self.data = self.data.slice(-300); // Remove this if you want to store permanaent history
+    self.data = self.data.slice(-250);
 };
 
 /**

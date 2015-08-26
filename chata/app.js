@@ -23,6 +23,23 @@ var options = {
         ca: fs.readFileSync('X:/domains/toka.io/ssl/DigiCertCA.crt').toString(),
         rejectUnauthorized: false
     }
+    /* ssl: {
+	    key: fs.readFileSync('/etc/httpd/conf.d/domains/toka.io/ssl/wildcard_toka_io.key', 'utf-8'),
+	    cert: fs.readFileSync('/etc/httpd/conf.d/domains/toka.io/ssl/wildcard_toka_io.crt', 'utf-8'),
+	    ca: fs.readFileSync('/etc/httpd/conf.d/domains/toka.io/ssl/DigiCertCA.crt', 'utf-8'),
+	    rejectUnauthorized: false
+	} */
 };
 
 chata.startServer(options);
+
+//process.stdin.resume();
+
+//do something when app is closing
+process.on('exit', function() {chata.saveState()});
+
+//catches ctrl+c event
+process.on('SIGINT', function() {chata.saveState()});
+
+//catches uncaught exceptions
+process.on('uncaughtException', function() {chata.saveState()});
