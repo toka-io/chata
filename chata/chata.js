@@ -18,7 +18,6 @@ function Chata() {
     this.io;
     this.port = 1337;
 
-    this.numOfChatrooms = 0;
     this.chatrooms = {};
     this.sockets = {};
 
@@ -135,7 +134,6 @@ Chata.prototype.initializeSocketEvents = function(socket) {
         
         if (!self.chatrooms.hasOwnProperty(json.chatroomId)) {
             self.chatrooms[json.chatroomId] = new Chatroom(json.chatroomId);
-            self.numOfChatrooms++;
         }
 
         // Retrieve the chatroom the client is trying to join
@@ -170,6 +168,10 @@ Chata.prototype.initializeSocketEvents = function(socket) {
         var message = new Message();
 
         if (!message.isValidMessage(json)) return;        
+
+        if (!self.chatrooms.hasOwnProperty(json.chatroomId)) {
+            self.chatrooms[json.chatroomId] = new Chatroom(json.chatroomId);
+        }
 
         chatroom = self.chatrooms[json.chatroomId];
         message.create(json);
