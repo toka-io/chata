@@ -13,16 +13,14 @@ var chata = require('./chata');
 
 var fs = require('fs');
 
-var port = (process.argv[2]) ? process.argv[2] : 1337; 
-
 var options = {
-    port: port,
-    ssl: {
-        key: fs.readFileSync('X:/domains/toka.io/ssl/wildcard_toka_io.key').toString(),
-        cert: fs.readFileSync('X:/domains/toka.io/ssl/wildcard_toka_io.crt').toString(),
-        ca: fs.readFileSync('X:/domains/toka.io/ssl/DigiCertCA.crt').toString(),
-        rejectUnauthorized: false
-    }
+    port: (process.argv[2]) ? process.argv[2] : 1337,
+//    ssl: {
+//        key: fs.readFileSync('X:/domains/toka.io/ssl/wildcard_toka_io.key').toString(),
+//        cert: fs.readFileSync('X:/domains/toka.io/ssl/wildcard_toka_io.crt').toString(),
+//        ca: fs.readFileSync('X:/domains/toka.io/ssl/DigiCertCA.crt').toString(),
+//        rejectUnauthorized: false
+//    }
     /* ssl: {
 	    key: fs.readFileSync('/etc/httpd/conf.d/domains/toka.io/ssl/wildcard_toka_io.key', 'utf-8'),
 	    cert: fs.readFileSync('/etc/httpd/conf.d/domains/toka.io/ssl/wildcard_toka_io.crt', 'utf-8'),
