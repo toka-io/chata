@@ -31,13 +31,13 @@ var options = {
 
 chata.startServer(options);
 
-//process.stdin.resume();
+process.stdin.resume();
 
 //do something when app is closing
-process.on('exit', function() {chata.saveState()});
+process.on('exit', function() {chata.saveState();});
 
 //catches ctrl+c event
-process.on('SIGINT', function() {chata.saveState()});
+process.on('SIGINT', function() {chata.saveState();});
 
 //catches uncaught exceptions
-process.on('uncaughtException', function() {chata.saveState()});
+process.on('uncaughtException', function() {chata.saveState();});
