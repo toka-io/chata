@@ -9,18 +9,18 @@ The chat server can run on any available port (default is 1337) and supports the
 ### Server Events
 - connect
 - disconnect
-	Same effect as leave
+	- Same effect as leave
 - activeViewerCount
 - join
 - leave
 - sendMessage
-	Sends a reciveMessage to all other sockets
+	- Sends a reciveMessage to all other sockets
 - users
 
 ### Client Events
 - joined
 - left
-	Only used when you are forced off a channel without instigating it.
+	- Only used when you are forced off a channel without instigating it.
 - activeViewerCount
 - history
 - receiveMessage
