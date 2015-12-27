@@ -1,451 +1,422 @@
-/**
- * Chata - Simple Chat Server Module
- * @author: Andy Lim
- * @email: andytlim@gmail.com
- */
-"use strict";
+	/**
+	* Chata - Simple Chat Server Module
+	* @author: Andy Lim
+	* @email: andytlim@gmail.com
+	*/
+	"use strict";
 
-module.exports = new Chata();
+	module.exports = new Chata();
 
-var moment = require('moment');
-var fs = require('fs');
+	var moment = require('moment');
+	var fs = require('fs');
 
-/** 
- * Chata App 
- * @desc: Chata application. This is what initializes all of the socket evens and manages socket and user sessions.
- */
-function Chata() {
-    this.io;
-    this.port = 1337;
+	/** 
+	* Chata App 
+	* @desc: Chata application. This is what initializes all of the socket evens and manages socket and user sessions.
+	*/
+	function Chata() {
+	this.io;
+	this.port = 1337;
 
-    this.chatrooms = {};
-    this.sockets = {};
+	this.chatrooms = {};
+	this.sockets = {};
+	this.socketToChatroom = {};
 
-    var self = this;
+	var self = this;
 
-    // Gets cookie for domain
-    this.getCookie = function(cname, cookie) {
-        if (typeof cookie === "undefined")
-            return "";
+	// Gets cookie for domain
+	this.getCookie = function(cname, cookie) {
+	    if (typeof cookie === "undefined")
+	        return "";
 
-        var name = cname + "=";
-        var ca = cookie.split(";");
-        for (var i = 0; i < ca.length; i++) {
-            var c = ca[i];
-            while (c.charAt(0) == " ")
-                c = c.substring(1);
-            if (c.indexOf(name) == 0)
-                return c.substring(name.length, c.length);
-        }
+	    var name = cname + "=";
+	    var ca = cookie.split(";");
+	    for (var i = 0; i < ca.length; i++) {
+	        var c = ca[i];
+	        while (c.charAt(0) == " ")
+	            c = c.substring(1);
+	        if (c.indexOf(name) == 0)
+	            return c.substring(name.length, c.length);
+	    }
 
-        return "";
-    }
+	    return "";
+	}
 
-    // Debugging Only - Prints objects JSON.stringify() cannot support
-    this.printObj = function(obj) {
-        for (var key in obj) {
-            console.log(key + ": " + obj[key]);
-        }
-    }
+	// Debugging Only - Prints objects JSON.stringify() cannot support
+	this.printObj = function(obj) {
+	    for (var key in obj) {
+	        console.log(key + ": " + obj[key]);
+	    }
+	}
 
-    /*
-     * @desc: Starts server at specified port
-     */
-    this.startServer = function(options) {
-        var app;
+	/*
+	 * @desc: Starts server at specified port
+	 */
+	this.startServer = function(options) {
+	    var app;
 
-        console.log("Loading save state...");
-        self.loadSave();
+	    self.loadState();
 
-        // Uses ssl if certificate information is provided
-        if (options && options.ssl) {
-            app = require('https').createServer(options.ssl);
-            console.log((new Date()) + " Server is using https");
-        } else {
-            app = require('http').createServer();
-            console.log((new Date()) + " Server is using http");
-        }
+	    // Uses ssl if certificate information is provided
+	    if (options && options.ssl) {
+	        app = require('https').createServer(options.ssl);
+	        console.log((new Date()) + " Server is using https");
+	    } else {
+	        app = require('http').createServer();
+	        console.log((new Date()) + " Server is using http");
+	    }
 
-        // Start server with app options
-        self.io = require('socket.io')(app);
+	    // Start server with app options
+	    self.io = require('socket.io')(app);
 
-        // Add a connect listener
-        self.io.on('connection', function(socket) {
-            // Add socket to global chata server
-            self.sockets[socket.id] = socket;
+	    // Add a connect listener
+	    self.io.on('connection', function(socket) {
+	        // Add socket to global chata server
+	        self.sockets[socket.id] = socket;
 
-            // Client connected
-            var clientIp = socket.request.connection.remoteAddress;
-            console.log((new Date()) + " New connection from " + clientIp);
-            console.log((new Date()) + " Cookie: " + self.getCookie("username", socket.request.headers.cookie));
+	        // Client connected
+	        console.log((new Date()) + " New connection from " + socket.request.connection.remoteAddress);
+	        console.log((new Date()) + " Cookie: " + self.getCookie("username", socket.request.headers.cookie));
 
-            self.socketEvents(socket);
-        });
+	        self.socketEvents(socket);
+	    });
 
-        // Specifies what port to listen on
-        if (options && options.port) {
-            app.listen(options.port);
-            console.log((new Date()) + " Server is listening on port " + options.port);
-            self.port = options.port;
-        } else {
-            app.listen(self.port);
-            console.log((new Date()) + " Server is listening on port " + self.port);
-        }
-    }
+	    // Specifies what port to listen on
+	    if (options && options.port) {
+	        app.listen(options.port);
+	        console.log((new Date()) + " Server is listening on port " + options.port);
+	        self.port = options.port;
+	    } else {
+	        app.listen(self.port);
+	        console.log((new Date()) + " Server is listening on port " + self.port);
+	    }
+	}
 
-    this.socketEvents = function(socket) {
-        /*
-         * activeViewerCount event
-         * @desc: Client requests a list of all chatrooms and their viewer counts (ip-based not login based)
-         */
-        socket.on('activeViewerCount', function() {
-            var clientIp = socket.request.connection.remoteAddress;
+	// Accepted Events
+	// join, leave, activeViewerCount, users, history, sendMessage, disconnect
+	// 
+	// Events Sent
+	// joined, left, activeViewerCount, users, history, receiveMessage
+	// 
+	this.socketEvents = function(socket) {
+		socket.on('join', function(json) { // Currently set up for single socket
+			if (typeof json.chatroomId === "string" && json.chatroomId.trim().length > 0) {
+				var chatroomId = json.chatroomId.trim();
+				if (!self.chatrooms.hasOwnProperty(chatroomId)) {
+					self.chatrooms[chatroomId] = new Chatroom(chatroomId);
+				}
+				if(typeof json.username === "string" && json.username.trim().length > 0) {
+					self.chatrooms[chatroomId].addUser(json.username.trim(), socket);
+				} else {
+					self.chatrooms[chatroomId].addSocket(socket);
+				}
 
-            console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " requested active viewer count");
+				if (!self.socketToChatroom.hasOwnProperty(socket.id)) {
+					self.socketToChatroom[socket.id] = [];
+				}
+				self.socketToChatroom[socket.id].push(chatroomId);
 
-            socket.emit('activeViewerCount', self.getActiveViewerCount());
-        });
+				if(typeof json.username === "string" && json.username.trim().length > 0) {
+					socket.emit('joined', {'chatroomId': chatroomId, 'username': json.username.trim()});
+					console.log((new Date()) + " [Chatroom " + chatroomId + "] " + json.username.trim() + " joined");
+				} else {
+					socket.emit('joined', {'chatroomId': chatroomId});
+					console.log((new Date()) + " [Chatroom " + chatroomId + "] Unknown joined");
+				}
+			}
+		});
 
-        /*
-         * disconnect event
-         * @desc: Client disconnects
-         */
-        socket.on("disconnect", function() {
-            self.removeSocket(socket);
+		socket.on('leave', function(json) { // Currently set up for single socket
+			if (typeof json.chatroomId === "string" && json.chatroomId.trim().length > 0) {
+				if (self.chatrooms.hasOwnProperty(json.chatroomId.trim())) {
+					if (self.socketToChatroom.hasOwnProperty(socket.id)) {
+						if (self.socketToChatroom[socket.id].indexOf(json.chatroomId.trim())) {
+							self.chatrooms[json.chatroomId.trim()].removeSocket(socket.id);
+							self.socketToChatroom[socket.id].splice(self.socketToChatroom[socket.id].indexOf(json.chatroomId.trim()), 1);
+							console.log((new Date()) + " [Chatroom " + json.chatroomId.trim() + "] left");
+						}
+					}
+				}
+			}
+		});
 
-            console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " disconnected");
+		socket.on('activeViewerCount', function(json) {
+			if (typeof json.chatroomId === "string" && json.chatroomId.trim().length > 0) {
+				var chatroomId = json.chatroomId.trim();
+				if (self.chatrooms.hasOwnProperty(json.chatroomId.trim())) {
+					if (self.chatrooms[chatroomId]) {
+						console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " [Chatroom " + json.chatroomId + "] requested active viewer count");
+						socket.emit('activeViewerCount', {'chatroomId': chatroomId, 'activeViewerCount': self.chatrooms[chatroomId].activeViewerCount});
+					}
+				}
+			}
+		});
 
-            // Go through all sockets and send them the updated user list and client list to them
-            // This can be made more efficient to the ones in/viewing the chatroom
-            for (var socketID in self.sockets) {
-                if (socketID !== socket.id) {
-                    self.sockets[socketID].emit('activeViewerCount', self.getActiveViewerCount());
-                }
-            }
-        });
+		socket.on('users', function(json) {
+			if (typeof json.chatroomId === "string" && json.chatroomId.trim().length > 0) {
+				if (self.chatrooms.hasOwnProperty(json.chatroomId.trim())) {
+					console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " [Chatroom " + json.chatroomId + "] requested all usernames");
+					socket.emit('users', {'chatroomId': json.chatroomId.trim(), 'users': self.chatrooms[json.chatroomId.trim()].usernames});
+				}
+			}
+		});
 
-        /*
-         * join event
-         * @desc: User joins chatroom
-         */
-        socket.on('join', function(json) {
-            // Chatroom is created if it does not exist
-            // Yes, I do not prevent a non-registered chatroom from being created - This could be API potential
-            
-            if (!self.chatrooms.hasOwnProperty(json.chatroomId)) {
-                self.chatrooms[json.chatroomId] = new Chatroom(json.chatroomId);
-            }
+		socket.on('history', function(json) {
+			if (typeof json.chatroomId === "string" && json.chatroomId.trim().length > 0) {
+				if (self.chatrooms.hasOwnProperty(json.chatroomId.trim())) {
+					socket.emit('history', self.chatrooms[json.chatroomId.trim()].history);
+				}
+			}
+		});
 
-            // Retrieve the chatroom the client is trying to join
-            var chatroom = self.chatrooms[json.chatroomId];
+		socket.on('sendMessage', function(json) {
+			var message = new Message
+			message.populate(json);
+			if (self.chatrooms.hasOwnProperty(message.chatroomId)) {
+				console.log((new Date()) + " [Chatroom " + message.chatroomId + "] Received message from " + message.username + ": " + message.text);
+				self.chatrooms[message.chatroomId].sendMessage(message, socket.id);
+			}
+		});
 
-            // Add the client
-            chatroom.addClient(socket);
+		socket.on('disconnect', function() {
+			if (self.socketToChatroom.hasOwnProperty(socket.id)) {
+				var chatrooms = self.socketToChatroom[socket.id]
+				for (var i = 0; i < chatrooms.length; i++) {
+					self.chatrooms[chatrooms[i]].removeSocket(socket.id);
+					delete self.socketToChatroom[socket.id];
+				}
+			}
+			console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " disconnected");
+			delete self.sockets[socket.id];
+		});
+	}
 
-            // Add user if they are logged in
-            // Logged in users will have a username passed in the json
-            if (json.username.trim() !== "")
-                chatroom.addUser(json.username, socket);
+	this.loadState = function() {
+	    console.log((new Date()) + " Loading save state...");
 
-            console.log((new Date()) + " [Chatroom " + json.chatroomId + "] " + json.username + " joined");
+	    var chatrooms = JSON.parse(fs.readFileSync('data/save.json').toString());
+	    var loadedChatrooms = {};
 
-            // Send chat history to the client
-            socket.emit("history", chatroom.history);
-            
+	    for (var chatroomId in chatrooms) {
+	        loadedChatrooms[chatroomId] = new Chatroom(chatroomId);
+	        loadedChatrooms[chatroomId].history.data = chatrooms[chatroomId].history;
+	    }
+	    self.chatrooms = loadedChatrooms;
 
-            // Go through all sockets and send them the updated user list and client list to them
-            // This can be made more efficient to the ones in/viewing the chatroom
-            for (var socketID in self.sockets) {
-                if (socketID !== socket.id) {
-                    self.sockets[socketID].emit('activeViewerCount', self.getActiveViewerCount());
-                }
-            }
-        });
+	    console.log((new Date()) + " Save state loaded");
+	}
 
-        // Make sure to add a check if it's JSON -- maybe even if it's a particular JSON object
-        socket.on('sendMessage', function(json) {
-            var chatroom;
-            var message = new Message();
+	this.saveState = function() {
+	    console.log((new Date()) + " Saving chata state...");
 
-            if (!message.isValidMessage(json)) return;        
+		var chatrooms = {};
+	    for (var chatroomId in self.chatrooms) {
+	        chatrooms[chatroomId] = {
+	       		'history': self.chatrooms[chatroomId].history.data
+	        };
+	    }
 
-            if (!self.chatrooms.hasOwnProperty(json.chatroomId)) {
-                self.chatrooms[json.chatroomId] = new Chatroom(json.chatroomId);
-            }
-
-            chatroom = self.chatrooms[json.chatroomId];
-            message.create(json);
-
-            // Store message in history
-            chatroom.updateHistory(message);
-
-            console.log((new Date()) + " [Chatroom " + chatroom.chatroomId + "] Received message from " + message.username + ": " + message.text);
-
-            // Go through all sockets stored in chatroom and send the message to them
-            for (var clientIp in chatroom.clients) {
-                var chatroomSockets = chatroom.clients[clientIp].sockets;
-                for (var socketID in chatroomSockets) {
-                    if (socketID !== socket.id) {
-                        chatroomSockets[socketID].emit('receiveMessage', message);
-                    }
-                }
-            }
-        });
-
-        /*
-         * viewers event
-         * @desc: Client requests a list of all chatrooms and their active viewer count and users
-         */
-        socket.on('users', function(chatroomId) {
-            if (typeof chatroomId === "string") {
-                var clientIp = socket.request.connection.remoteAddress;
-
-                console.log((new Date()) + " Client @ " + socket.request.connection.remoteAddress + " requested all viewers");
-
-                socket.emit('activeViewerCount', self.getActiveViewerCount(chatroomId));
-                socket.emit('users', self.getUsers(chatroomId));
-            }
-        });
-    }
-
-    this.getActiveViewerCount = function(chatroomId) {
-        var activeViewerCount = {};
-
-        if (typeof chatroomId === "undefined") {
-            for (var chatroomId in self.chatrooms) {
-                activeViewerCount[chatroomId] = self.chatrooms[chatroomId].numOfClients;
-            }
-        } else {
-            activeViewerCount[chatroomId] = self.chatrooms[chatroomId].numOfClients;
-        }
-
-        return activeViewerCount;
-    }
-
-    this.getUsers = function(chatroomId) {
-        var users = {};
-        users[chatroomId] = [];
-
-        for (var username in self.chatrooms[chatroomId].users)
-            users[chatroomId].push(username);
-
-        return users;
-    }
-
-    this.loadSave = function() {
-        var chatrooms = JSON.parse(fs.readFileSync('data/save.json').toString());
-
-        for (var chatroomId in chatrooms) {
-            chatrooms[chatroomId].__proto__ = Chatroom.prototype;
-            chatrooms[chatroomId].history.__proto__ = History.prototype;
-        }
-        self.chatrooms = chatrooms;
-    }
-
-    // We can improve performance if we store the chatroomId to the sockets map...but what about when we have multiple chatrooms to one socket?
-    this.removeSocket = function(socket) {
-        for (var chatroomId in self.chatrooms) {
-            var chatroom = self.chatrooms[chatroomId];
-            chatroom.removeSocket(socket);
-        }
-    }
-
-    this.saveState = function() {
-        for (var chatroomId in self.chatrooms) {
-            self.chatrooms[chatroomId].clients = {};
-            self.chatrooms[chatroomId].numOfClients = 0;
-            self.chatrooms[chatroomId].sockets = {};
-            self.chatrooms[chatroomId].socketToClient = {};
-            self.chatrooms[chatroomId].socketToUser = {};
-            self.chatrooms[chatroomId].users = {};        
-        }
-
-        console.log((new Date()) + " Saving chata state..." + JSON.stringify(self.chatrooms));
-        fs.writeFileSync('data/save.json', JSON.stringify(self.chatrooms));
-        process.exit();
-    }
+	    fs.writeFileSync('data/save.json', JSON.stringify(chatrooms));
+	    console.log((new Date()) + " Chata state saved");
+	}
 }
 
-/**
- * Chatroom object 
- * @desc: Toka chatroom
- */
-function Chatroom(chatroomId) {
-    this.chatroomId = chatroomId; // Unique identifier for chatroom
-    this.clients = {}; // Easy access to clients
-    this.history = new History(chatroomId); // Chatroom's history
-    this.numOfClients = 0; // Number of people connected to this chatroom via ip
-    this.sockets = {}; // Easy access to sockets
-    this.socketToClient = {}; // Reverse lookup for client
-    this.socketToUser = {}; // Reverse lookup for user
-    this.users = {}; // Easy access to users
-
-    var self = this;
-
-    /*
-     * @desc: Adds a client if it has not already been added to this chatroom
-     *  Maps the socket to a client if it is not already mapped
-     */
-    this.addClient = function(socket) {
-        var clientIp = socket.request.connection.remoteAddress;
-
-        if (!self.clients.hasOwnProperty(clientIp)) {
-            var client = new Client(clientIp);
-            self.clients[clientIp] = client;
-            self.numOfClients++;
-        }
-
-        self.clients[clientIp].addSocket(socket);
-        self.socketToClient[socket.id] = clientIp;
-    }
-
-    /*
-     * @desc: Adds a user if they have not already been added to this chatroom
-     */
-    this.addUser = function(username, socket) {
-        if (!self.users.hasOwnProperty(username)) {
-            var user = new User(username)
-            self.users[username] = user;
-        }
-
-        self.users[username].addSocket(socket);
-        self.socketToUser[socket.id] = username;
-    }
-
-    this.removeSocket = function(socket) {
-        var clientIp;
-        var username;
-
-        if (self.socketToClient.hasOwnProperty(socket.id)) {
-            clientIp = self.socketToClient[socket.id];
-
-            self.clients[clientIp].removeSocket(socket);
-            
-            if (self.clients[clientIp].hasNoSockets()) {
-                delete self.clients[clientIp];
-                self.numOfClients--;
-            }
-        }
-
-        if (self.socketToUser.hasOwnProperty(socket.id)) {
-            username = self.socketToUser[socket.id];
-
-            self.users[username].removeSocket(socket);
-
-            if (self.users[username].hasNoSockets()) {
-                delete self.users[username];
-            }
-        }
-    }
-
-    this.updateHistory = function(message) {
-        self.history.addMessage(message);
-    }
-}
-
-/** 
- * Client object
- * @desc: Clients are any physical device with an ip. Multiple sockets can come from a client.
- */
-function Client(clientIp) {
-    this.clientIp = clientIp;
-    this.sockets = {};
-    
-    var self = this;
-
-    this.addSocket = function(socket) {
-        if (!self.sockets.hasOwnProperty(socket.id)) {
-            self.sockets[socket.id] = socket;
-        }
-    }
-
-    this.removeSocket = function(socket) {
-        if (self.sockets.hasOwnProperty(socket.id)) {
-            delete self.sockets[socket.id];
-        }
-    }
-
-    this.hasNoSockets = function() {
-        return !Object.keys(self.sockets).length;
-    }
-}
-
-/** 
- * History object
- * @desc: Stores chatroom messages up to 100
- */
-function History(chatroomId) {
-    this.chatroomId = chatroomId;
-    this.data = [];
-
-    var self = this;
-
-    this.addMessage = function(message) {
-        self.data.push(message);
-        self.data = self.data.slice(-250);
-    }
-}
-
-/**
- * Message object
- * @desc: Chatroom message format 
- */
+// Message Object
 function Message() {
-    this.chatroomId;
-    this.username;
-    this.text;
-    this.timestamp = moment().utc().format('MMM D, YYYY h:mm a');
+	this.chatroomId;
+	this.username;
+	this.text;
+	this.timestamp;
 
-    var self = this;
+	var self = this;
 
-    this.isValidMessage = function(json) {
-        try {
-            if (typeof json.chatroomId !== "string")
-                return false;
+	this.addChatroomId = function(chatroomId) {
+		if (typeof chatroomId === "string") {
+			self.chatroomId = chatroomId.trim();
+			return true;
+		} else {
+			return false;
+		}
+	}
 
-            if (typeof json.text !== "string")
-                return false;
+	this.addUsername = function(username) {
+		if (typeof username === "string") {
+			self.username = username.trim();
+			return true;
+		} else {
+			return false;
+		}
+	}
 
-            if (typeof json.username !== "string")
-                return false;
-        } catch (err) {
-            return false;
-        }
+	this.addText = function(text) {
+		if (typeof text === "string") {
+			self.text = text;
+			return true;
+		} else {
+			return false;
+		}
+	}
 
-        return true;
-    }
+	this.addTimestamp = function(timestamp) {
+		if (moment(timestamp).isValid()) {
+			self.timestamp = timestamp;
+			return true;
+		} else {
+			return false;
+		}
+	}
 
-    this.create = function(json) {
-        self.chatroomId = json.chatroomId;
-        self.username = json.username;
-        self.text = json.text;
-    }
+	this.populate = function(json) {
+		if (self.validateJson(json)){
+			self.chatroomId = json.chatroomId.trim();
+			self.username = json.username.trim();
+			self.text = json.text;
+			if (json.timestamp) {
+				self.timestamp = json.timestamp;
+			} else {
+				self.timestamp = moment().utc().format('MMM D, YYYY h:mm a');
+			}
+		} else {
+			return false;
+		}
+	}
+
+	this.validateJson = function(json) {
+		try {
+		    if (typeof json.chatroomId !== "string") {
+		        return false;
+		    }
+		    if (typeof json.text !== "string") {
+		        return false;
+			}
+		    if (typeof json.username !== "string") {
+		        return false;
+		    }
+		    if (json.timestamp) {
+		    	if (typeof json.timestamp !== "string")
+		    		return false;
+		    }
+		} catch (err) {
+		    return false;
+		}
+		return true;
+	}
 }
 
+// Chatroom Object
+function Chatroom(chatroomId) {
+	this.chatroomId = chatroomId;
+	this.history = new History(chatroomId);
+	this.users = {};
+	this.sockets = {};
+	this.socketToUser = {};
+	this.usernames = [];
+	this.activeViewerCount = 0;
 
-/** 
- * User object
- * @desc: Username and their associated sockets
- */
+	var self = this;
+
+	this.addSocket = function(socket) {
+		if (!self.sockets.hasOwnProperty(socket.id)) {
+			self.sockets[socket.id] = socket;
+			self.activeViewerCount++;
+		}
+	}
+
+	this.addUser = function(username, socket) {
+		if (!self.sockets.hasOwnProperty(socket.id)) {
+			self.sockets[socket.id] = socket;
+			self.activeViewerCount++;
+		}
+		if (!self.users.hasOwnProperty(username)) {
+			self.users[username] = new User(username);
+			self.users[username].addSocket(socket);
+
+			self.socketToUser[socket.id] = username;
+
+			if (self.usernames.indexOf(username) == -1) {
+				self.usernames.push(username);
+			}
+		}
+	}
+
+	this.removeAllSockets = function(username) {
+		if (self.users.hasOwnProperty(username)) {
+			var sockets = self.users[username].sockets;
+			for (var i = 0; i < sockets.length; i++) {
+				if (self.sockets.hasOwnProperty(sockets[i])) {
+					self.sockets[sockets[i]].emit('left', {'chatroomId': chatroomId, 'username': username});
+					delete self.sockets[sockets[i]];
+					delete self.socketToUser[sockets[i]];
+					self.activeViewerCount--;
+				}
+			}
+			self.usernames.splice(self.usernames.indexOf(username), 1);
+		}
+	}
+
+	this.removeSocket = function(socketId) {
+		if (self.sockets.hasOwnProperty(socketId)) {
+			if (self.socketToUser.hasOwnProperty(socketId)) {
+				var username = self.socketToUser[socketId];
+				self.users[username].removeSocket(socketId);
+				if (self.users[username].sockets.length == 0) {
+					self.usernames.splice(self.usernames.indexOf(username), 1);
+					delete self.users[username];
+					delete self.socketToUser[socketId];
+				}
+			}
+			delete self.sockets[socketId];
+			self.activeViewerCount--;
+		}
+	}
+
+	this.sendMessage = function(message, socketId) {
+		try {
+			message.addUsername(self.socketToUser[socketId]);
+		} catch(err){
+		}
+		for (var socket in self.sockets) {
+			if (self.sockets[socket].id != socketId) {
+				self.sockets[socket].emit('receiveMessage', message);
+			}
+		}
+		self.addHistory(message);
+	}
+
+	this.addHistory = function(message) {
+		self.history.addMessage(message);
+	}
+}
+
+// User Object
 function User(username) {
-    this.username = username;
-    this.sockets = {};
+	this.username = username;
+	this.sockets = [];
 
-    var self = this;
+	var self = this;
 
-    this.addSocket = function(socket) {
-        if (!self.sockets.hasOwnProperty(socket.id)) {
-            self.sockets[socket.id] = socket;
-        }
-    }
+	this.addSocket = function(socket) {
+		if (self.sockets.indexOf(socket.id) == -1) {
+			self.sockets.push(socket.id);
+		}
+	}
 
-    this.removeSocket = function(socket) {
-        if (self.sockets.hasOwnProperty(socket.id)) {
-            delete self.sockets[socket.id];
-        }
-    }
+	this.removeSocket = function(socketId) {
+		if (self.sockets.indexOf(socketId) != -1) {
+			self.sockets.splice(self.sockets.indexOf(socketId), 1);
+		}
+	}
+}
 
-    this.hasNoSockets = function() {
-        return !Object.keys(self.sockets).length;
-    }
+// History Object
+function History(chatroomId) {
+	this.chatroomId = chatroomId;
+	this.data = [];
+
+	var self = this;
+
+	this.addMessage = function(message) {
+		self.data.push(message);
+		self.data = self.data.slice(-250);
+	}
 }
