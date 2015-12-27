@@ -1,6 +1,6 @@
 	/**
 	* Chata - Simple Chat Server Module
-	* @author: Andy Lim
+	* @author: Andy Lim & Noah Kraft
 	* @email: andytlim@gmail.com
 	*/
 	"use strict";
