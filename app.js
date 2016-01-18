@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 /**
  * Chata - Simple Chat Server Executable
  * @author: Andy Lim
